@@ -7,7 +7,7 @@ from torchvision import transforms
 from torch.nn.functional import one_hot
 
 # Configuration
-DATASET_PATH = "/home/rogelio/scanner/dataset"  # Replace with the actual dataset path
+DATASET_PATH = "/home/rogelio/scanner/dataset"  # Dataset path
 LABEL_MAPPING_FILE = "label_mapping.json"
 IMAGE_SIZE = (256, 256)
 BATCH_SIZE = 16
@@ -53,35 +53,43 @@ class FaceDataset(Dataset):
             if category == "positive":
                 for person in os.listdir(category_path):
                     person_path = os.path.join(category_path, person)
-                    rgb_path = os.path.join(person_path, "rgb")
-                    depth_path = os.path.join(person_path, "depth")
+                    rgb_paths = [
+                        os.path.join(person_path, "rgb"),
+                        os.path.join(person_path, "rgb_augmented")
+                    ]
+                    depth_paths = [
+                        os.path.join(person_path, "depth"),
+                        os.path.join(person_path, "depth_augmented")
+                    ]
 
                     # Assign a label to each individual
                     if person not in self.label_mapping:
                         self.label_mapping[person] = current_label
                         current_label += 1
 
-                    if not os.path.exists(rgb_path) or not os.path.exists(depth_path):
-                        continue
+                    for rgb_path, depth_path in zip(rgb_paths, depth_paths):
+                        if not os.path.exists(rgb_path) or not os.path.exists(depth_path):
+                            continue
 
-                    rgb_files = sorted(os.listdir(rgb_path))
-                    depth_files = sorted(os.listdir(depth_path))
+                        rgb_files = sorted(os.listdir(rgb_path))
+                        depth_files = sorted(os.listdir(depth_path))
 
-                    for rgb_file in rgb_files:
-                        rgb_id = rgb_file.replace("rgb_", "").replace(".png", "")
-                        matching_depth_file = None
+                        for rgb_file in rgb_files:
+                            # Match files with augmented names
+                            rgb_id = rgb_file.replace("rgb_", "").replace("rgb_aug_", "").replace(".png", "")
+                            matching_depth_file = None
 
-                        for depth_file in depth_files:
-                            depth_id = depth_file.replace("depth_", "").replace(".png", "")
-                            if depth_id.startswith(rgb_id):  # Match base names
-                                matching_depth_file = depth_file
-                                break
+                            for depth_file in depth_files:
+                                depth_id = depth_file.replace("depth_", "").replace("depth_aug_", "").replace(".png", "")
+                                if depth_id.startswith(rgb_id):  # Match base names
+                                    matching_depth_file = depth_file
+                                    break
 
-                        if matching_depth_file:
-                            rgb_file_path = os.path.join(rgb_path, rgb_file)
-                            depth_file_path = os.path.join(depth_path, matching_depth_file)
-                            self.data.append((rgb_file_path, depth_file_path))
-                            self.labels.append(self.label_mapping[person])
+                            if matching_depth_file:
+                                rgb_file_path = os.path.join(rgb_path, rgb_file)
+                                depth_file_path = os.path.join(depth_path, matching_depth_file)
+                                self.data.append((rgb_file_path, depth_file_path))
+                                self.labels.append(self.label_mapping[person])
 
             # For negative, assign a single label
             elif category == "negative":
@@ -91,30 +99,37 @@ class FaceDataset(Dataset):
 
                 for subfolder in os.listdir(category_path):
                     subfolder_path = os.path.join(category_path, subfolder)
-                    rgb_path = os.path.join(subfolder_path, "rgb")
-                    depth_path = os.path.join(subfolder_path, "depth")
+                    rgb_paths = [
+                        os.path.join(subfolder_path, "rgb"),
+                        os.path.join(subfolder_path, "rgb_augmented")
+                    ]
+                    depth_paths = [
+                        os.path.join(subfolder_path, "depth"),
+                        os.path.join(subfolder_path, "depth_augmented")
+                    ]
 
-                    if not os.path.exists(rgb_path) or not os.path.exists(depth_path):
-                        continue
+                    for rgb_path, depth_path in zip(rgb_paths, depth_paths):
+                        if not os.path.exists(rgb_path) or not os.path.exists(depth_path):
+                            continue
 
-                    rgb_files = sorted(os.listdir(rgb_path))
-                    depth_files = sorted(os.listdir(depth_path))
+                        rgb_files = sorted(os.listdir(rgb_path))
+                        depth_files = sorted(os.listdir(depth_path))
 
-                    for rgb_file in rgb_files:
-                        rgb_id = rgb_file.replace("rgb_", "").replace(".png", "")
-                        matching_depth_file = None
+                        for rgb_file in rgb_files:
+                            rgb_id = rgb_file.replace("rgb_", "").replace("rgb_aug_", "").replace(".png", "")
+                            matching_depth_file = None
 
-                        for depth_file in depth_files:
-                            depth_id = depth_file.replace("depth_", "").replace(".png", "")
-                            if depth_id.startswith(rgb_id):  # Match base names
-                                matching_depth_file = depth_file
-                                break
+                            for depth_file in depth_files:
+                                depth_id = depth_file.replace("depth_", "").replace("depth_aug_", "").replace(".png", "")
+                                if depth_id.startswith(rgb_id):  # Match base names
+                                    matching_depth_file = depth_file
+                                    break
 
-                        if matching_depth_file:
-                            rgb_file_path = os.path.join(rgb_path, rgb_file)
-                            depth_file_path = os.path.join(depth_path, matching_depth_file)
-                            self.data.append((rgb_file_path, depth_file_path))
-                            self.labels.append(self.label_mapping["negative"])
+                            if matching_depth_file:
+                                rgb_file_path = os.path.join(rgb_path, rgb_file)
+                                depth_file_path = os.path.join(depth_path, matching_depth_file)
+                                self.data.append((rgb_file_path, depth_file_path))
+                                self.labels.append(self.label_mapping["negative"])
 
     def __len__(self):
         return len(self.data)
