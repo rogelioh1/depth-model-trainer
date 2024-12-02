@@ -14,8 +14,13 @@ DATASET_PATH = "/home/rogelio/scanner/dataset"
 LABEL_MAPPING_FILE = "label_mapping.json"
 IMAGE_SIZE = (256, 256)
 BATCH_SIZE = 16
-NUM_EPOCHS = 25
+NUM_EPOCHS = 20
 LEARNING_RATE = 0.001
+
+# Dataset paths
+TRAIN_PATH = "/home/rogelio/scanner/dataset/train" 
+VAL_PATH = "/home/rogelio/scanner/dataset/val" 
+TEST_PATH = "/home/rogelio/scanner/dataset/test" 
 
 # Step 1: Initialize or Load Label Mapping
 def initialize_label_mapping():
@@ -43,85 +48,59 @@ class FaceDataset(Dataset):
     def _prepare_data(self):
         current_label = len(self.label_mapping)
 
-        # Handle "positive" category (individuals)
-        positive_path = os.path.join(self.dataset_path, "positive")
-        if os.path.exists(positive_path):
-            for person in os.listdir(positive_path):
-                person_path = os.path.join(positive_path, person)
-                rgb_paths = [
-                    os.path.join(person_path, "rgb"),
-                    os.path.join(person_path, "rgb_augmented")
-                ]
-                depth_paths = [
-                    os.path.join(person_path, "depth"),
-                    os.path.join(person_path, "depth_augmented")
-                ]
+        for category in ["positive", "negative"]:
+            category_path = os.path.join(self.dataset_path, category)
+            if not os.path.exists(category_path):
+                continue
 
-                if person not in self.label_mapping:
-                    self.label_mapping[person] = current_label
-                    current_label += 1
+            # Handle "positive" class: assign unique labels to each person
+            if category == "positive":
+                for person in os.listdir(category_path):
+                    person_path = os.path.join(category_path, person)
+                    rgb_path = os.path.join(person_path, "rgb")
+                    depth_path = os.path.join(person_path, "depth")
 
-                for rgb_path, depth_path in zip(rgb_paths, depth_paths):
-                    if not os.path.exists(rgb_path) or not os.path.exists(depth_path):
-                        continue
+                    # Assign a label to each person if not already labeled
+                    if person not in self.label_mapping:
+                        self.label_mapping[person] = current_label
+                        current_label += 1
 
                     rgb_files = sorted(os.listdir(rgb_path))
                     depth_files = sorted(os.listdir(depth_path))
 
                     for rgb_file in rgb_files:
-                        rgb_id = rgb_file.replace("rgb_", "").replace("rgb_aug_", "").replace(".png", "")
-                        matching_depth_file = None
+                        rgb_id = rgb_file.replace("rgb_", "").replace(".png", "")
+                        matching_depth_file = f"depth_{rgb_id}.png"
 
-                        for depth_file in depth_files:
-                            depth_id = depth_file.replace("depth_", "").replace("depth_aug_", "").replace(".png", "")
-                            if depth_id.startswith(rgb_id):  # Match base names
-                                matching_depth_file = depth_file
-                                break
+                        depth_file_path = os.path.join(depth_path, matching_depth_file)
+                        rgb_file_path = os.path.join(rgb_path, rgb_file)
 
-                        if matching_depth_file:
-                            rgb_file_path = os.path.join(rgb_path, rgb_file)
-                            depth_file_path = os.path.join(depth_path, matching_depth_file)
+                        if os.path.exists(depth_file_path):
                             self.data.append((rgb_file_path, depth_file_path))
                             self.labels.append(self.label_mapping[person])
 
-        # Handle "negative" category (non-face objects)
-        negative_path = os.path.join(self.dataset_path, "negative")
-        if os.path.exists(negative_path):
-            if "negative" not in self.label_mapping:
-                self.label_mapping["negative"] = current_label
-                current_label += 1
+            # Handle "negative" class
+            elif category == "negative":
+                if category not in self.label_mapping:
+                    self.label_mapping[category] = current_label
+                    current_label += 1
 
-            for subfolder in os.listdir(negative_path):
-                subfolder_path = os.path.join(negative_path, subfolder)
-                rgb_paths = [
-                    os.path.join(subfolder_path, "rgb"),
-                    os.path.join(subfolder_path, "rgb_augmented")
-                ]
-                depth_paths = [
-                    os.path.join(subfolder_path, "depth"),
-                    os.path.join(subfolder_path, "depth_augmented")
-                ]
-
-                for rgb_path, depth_path in zip(rgb_paths, depth_paths):
-                    if not os.path.exists(rgb_path) or not os.path.exists(depth_path):
-                        continue
+                for subfolder in os.listdir(category_path):
+                    subfolder_path = os.path.join(category_path, subfolder)
+                    rgb_path = os.path.join(subfolder_path, "rgb")
+                    depth_path = os.path.join(subfolder_path, "depth")
 
                     rgb_files = sorted(os.listdir(rgb_path))
                     depth_files = sorted(os.listdir(depth_path))
 
                     for rgb_file in rgb_files:
-                        rgb_id = rgb_file.replace("rgb_", "").replace("rgb_aug_", "").replace(".png", "")
-                        matching_depth_file = None
+                        rgb_id = rgb_file.replace("rgb_", "").replace(".png", "")
+                        matching_depth_file = f"depth_{rgb_id}.png"
 
-                        for depth_file in depth_files:
-                            depth_id = depth_file.replace("depth_", "").replace("depth_aug_", "").replace(".png", "")
-                            if depth_id.startswith(rgb_id):  # Match base names
-                                matching_depth_file = depth_file
-                                break
+                        depth_file_path = os.path.join(depth_path, matching_depth_file)
+                        rgb_file_path = os.path.join(rgb_path, rgb_file)
 
-                        if matching_depth_file:
-                            rgb_file_path = os.path.join(rgb_path, rgb_file)
-                            depth_file_path = os.path.join(depth_path, matching_depth_file)
+                        if os.path.exists(depth_file_path):
                             self.data.append((rgb_file_path, depth_file_path))
                             self.labels.append(self.label_mapping["negative"])
 
@@ -134,19 +113,17 @@ class FaceDataset(Dataset):
 
         # Load RGB and depth images
         rgb_img = cv2.imread(rgb_file)  # Load RGB image
-        depth_img = cv2.imread(depth_file, cv2.IMREAD_GRAYSCALE)  # Load depth as grayscale
+        depth_img = cv2.imread(depth_file, cv2.IMREAD_GRAYSCALE)  # Load depth as grayscale (2D)
 
-        # Apply transformations
         if self.transform:
-            rgb_img = self.transform(rgb_img)  # Transform RGB
-            depth_img = transforms.ToTensor()(depth_img)  # Convert depth to tensor (ensure it's 1 channel)
+            # Apply transformations to RGB image
+            rgb_img = self.transform(rgb_img)
 
-        # Ensure depth has a single channel (1, H, W)
-        depth_img = depth_img.unsqueeze(0) if depth_img.dim() == 2 else depth_img  # Add channel dimension if missing
+            # Resize and normalize the depth image
+            depth_img = cv2.resize(depth_img, (IMAGE_SIZE[1], IMAGE_SIZE[0]))  # Resize depth to match RGB
+            depth_img = torch.tensor(depth_img, dtype=torch.float32).unsqueeze(0)  # Add channel dimension (1, H, W)
 
         return rgb_img, depth_img, label
-
-
 
 # Step 3: Define the Model
 class DualInputModel(nn.Module):
@@ -166,8 +143,8 @@ class DualInputModel(nn.Module):
         )
 
     def forward(self, rgb, depth):
-        rgb_features = self.rgb_backbone(rgb)
-        depth_features = self.depth_backbone(depth)
+        rgb_features = self.rgb_backbone(rgb)  # Expected: [batch_size, 512]
+        depth_features = self.depth_backbone(depth)  # Expected: [batch_size, 512]
         combined_features = torch.cat((rgb_features, depth_features), dim=1)
         output = self.fc(combined_features)
         return output
@@ -219,7 +196,11 @@ def train_model(model, train_loader, val_loader, num_classes, num_epochs=10, lea
                 total += labels.size(0)
                 correct += predicted.eq(labels).sum().item()
 
-        val_acc = 100. * correct / total
+        if total == 0:
+            val_acc = 0
+        else:
+            val_acc = 100. * correct / total
+
         print(f"Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_acc:.2f}%")
 
     print("Training Complete!")
@@ -238,12 +219,10 @@ def main():
     ])
 
     # Create Dataset and DataLoader
-    dataset = FaceDataset(DATASET_PATH, label_mapping, transform=transform)
-    save_label_mapping(label_mapping)
+    train_dataset = FaceDataset(TRAIN_PATH, label_mapping, transform=transform)
+    val_dataset = FaceDataset(VAL_PATH, label_mapping, transform=transform)
 
-    train_size = int(0.8 * len(dataset))
-    val_size = len(dataset) - train_size
-    train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
+    save_label_mapping(label_mapping)
 
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
